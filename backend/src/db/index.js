@@ -1,7 +1,5 @@
 import mongoose from "mongoose";
 import { DB_NAME } from "../constant.js";
-import express from "express";
-const app = express();
 console.log("MONGO_URI =", process.env.MONGO_URI);
 const connectDB = async () => {
   try {
