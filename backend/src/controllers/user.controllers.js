@@ -1,5 +1,6 @@
 import { User } from "../models/user.models.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import jwt from "jsonwebtoken";
 
 export const registerUser = async (req, res) => {
   try {
@@ -150,5 +151,60 @@ export const logoutUser = async (req, res) => {
   } catch (error) {
     console.error("Error in logoutUser:", error);
     return res.status(500).json({ message: "Internal Server Error" });
+  }
+};
+
+export const refreshAccessToken = async (req, res) => {
+  try {
+    const incomingRefreshToken =
+      req.cookies.refreshToken || req.body.refreshToken;
+
+    if (!incomingRefreshToken) {
+      return res.status(401).json({ message: "Unauthorized request" });
+    }
+
+    const decodedToken = jwt.verify(
+      incomingRefreshToken,
+      process.env.REFRESH_TOKEN_SECRET,
+    );
+
+    const user = await User.findById(decodedToken?._id);
+
+    if (!user) {
+      return res.status(401).json({ message: "Invalid refresh token" });
+    }
+
+    if (incomingRefreshToken !== user?.refreshToken) {
+      return res
+        .status(401)
+        .json({ message: "Refresh token is expired or used" });
+    }
+
+    const accessToken = user.generateAccessToken();
+    const newRefreshToken = user.generateRefreshToken();
+
+    user.refreshToken = newRefreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    const options = {
+      httpOnly: true,
+      secure: true,
+    };
+
+    return res
+      .status(200)
+      .cookie("accessToken", accessToken, options)
+      .cookie("refreshToken", newRefreshToken, options)
+      .json({
+        success: true,
+        message: "Access token refreshed successfully",
+        accessToken,
+        refreshToken: newRefreshToken,
+      });
+  } catch (error) {
+    console.error("Error in refreshAccessToken:", error.message);
+    return res
+      .status(401)
+      .json({ message: "Invalid or expired refresh token" });
   }
 };
