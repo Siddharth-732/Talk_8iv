@@ -23,7 +23,7 @@ const messageSchema = new Schema(
     },
   },
   {
-    timestamps: true, // This automatically gives us the exact time the message was sent!
+    timestamps: true,
   },
 );
 

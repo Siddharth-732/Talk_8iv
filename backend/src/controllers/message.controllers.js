@@ -81,3 +81,42 @@ export const getMessages = async (req, res) => {
     res.status(500).json({ message: "Internal server error" });
   }
 };
+
+export const getConversations = async (req, res) => {
+  try {
+    const senderId = req.user._id;
+
+    // extract cursor and limit from the query string (default limit to 15)
+    const limit = parseInt(req.query.limit) || 15;
+    const cursor = req.query.cursor;
+
+    // base query: Find chats I am a part of
+    let query = { participants: { $in: [senderId] } };
+
+    // if a cursor is provided, only find chats OLDER than that exact timestamp
+    if (cursor) {
+      query.updatedAt = { $lt: new Date(cursor) };
+    }
+
+    const conversations = await Conversation.find(query)
+      .populate("participants", "displayName avatar email")
+      .populate("lastMessage")
+      .sort({ updatedAt: -1 })
+      .limit(limit);
+
+    let nextCursor = null;
+    // if the number of chats returned equals our limit, it means there are probably more in the database.
+    if (conversations.length === limit) {
+      nextCursor = conversations[conversations.length - 1].updatedAt;
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: conversations,
+      nextCursor, // The frontend will save this to use on the next scroll!
+    });
+  } catch (error) {
+    console.error("Error in getConversations controller: ", error.message);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
