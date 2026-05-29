@@ -236,3 +236,32 @@ export const updateAccountDetails = async (req, res) => {
     .status(200)
     .json({ success: true, message: "Account details updated", user });
 };
+export const changeCurrentPassword = async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword || !newPassword) {
+    return res
+      .status(400)
+      .json({ message: "Both old and new passwords are required" });
+  }
+
+  const user = await User.findById(req.user?._id);
+
+  if (!user.password) {
+    return res.status(400).json({
+      message: "This is a Google Auth account. You cannot change the password.",
+    });
+  }
+
+  const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+  if (!isPasswordCorrect) {
+    return res.status(400).json({ message: "Invalid old password" });
+  }
+
+  user.password = newPassword;
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json({ success: true, message: "Password changed successfully" });
+};
