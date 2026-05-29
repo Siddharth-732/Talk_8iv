@@ -1,5 +1,8 @@
 import { User } from "../models/user.models.js";
-import { uploadOnCloudinary } from "../utils/cloudinary.js";
+import {
+  uploadOnCloudinary,
+  deleteFromCloudinary,
+} from "../utils/cloudinary.js";
 import jwt from "jsonwebtoken";
 
 export const registerUser = async (req, res) => {
@@ -131,7 +134,7 @@ export const logoutUser = async (req, res) => {
         },
       },
       {
-        new: true,
+        returnDocument: "after",
       },
     );
 
@@ -207,4 +210,94 @@ export const refreshAccessToken = async (req, res) => {
       .status(401)
       .json({ message: "Invalid or expired refresh token" });
   }
+};
+
+export const updateAccountDetails = async (req, res) => {
+  const { displayName, bio } = req.body;
+
+  if (!displayName && !bio) {
+    return res
+      .status(400)
+      .json({ message: "Please provide a display name or bio to update." });
+  }
+
+  const user = await User.findByIdAndUpdate(
+    req.user?._id,
+    {
+      $set: {
+        ...(displayName && { displayName }), // Only update if provided
+        ...(bio && { bio }), // Only update if provided
+      },
+    },
+    { returnDocument: "after" },
+  ).select("-password -refreshToken");
+
+  return res
+    .status(200)
+    .json({ success: true, message: "Account details updated", user });
+};
+export const changeCurrentPassword = async (req, res) => {
+  const { oldPassword, newPassword } = req.body;
+
+  if (!oldPassword || !newPassword) {
+    return res
+      .status(400)
+      .json({ message: "Both old and new passwords are required" });
+  }
+
+  const user = await User.findById(req.user?._id);
+
+  if (!user.password) {
+    return res.status(400).json({
+      message: "This is a Google Auth account. You cannot change the password.",
+    });
+  }
+
+  const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+  if (!isPasswordCorrect) {
+    return res.status(400).json({ message: "Invalid old password" });
+  }
+
+  user.password = newPassword;
+  await user.save({ validateBeforeSave: false });
+
+  return res
+    .status(200)
+    .json({ success: true, message: "Password changed successfully" });
+};
+
+export const updateUserAvatar = async (req, res) => {
+  const avatarLocalPath = req.file?.path;
+
+  if (!avatarLocalPath) {
+    return res.status(400).json({ message: "Avatar file is missing" });
+  }
+
+  // Upload the new file to Cloudinary
+  const avatar = await uploadOnCloudinary(avatarLocalPath);
+
+  if (!avatar.url) {
+    return res.status(400).json({ message: "Error uploading avatar to cloud" });
+  }
+
+  // Get the user's OLD avatar URL from the database
+  const user = await User.findById(req.user?._id);
+  const oldAvatarUrl = user.avatar;
+
+  // Update the database with the NEW URL
+  const updatedUser = await User.findByIdAndUpdate(
+    req.user?._id,
+    { $set: { avatar: avatar.url } },
+    { returnDocument: "after" },
+  ).select("-password -refreshToken");
+
+  if (oldAvatarUrl && !oldAvatarUrl.includes("default-avatar-url")) {
+    await deleteFromCloudinary(oldAvatarUrl);
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: "Avatar updated successfully",
+    user: updatedUser,
+  });
 };
